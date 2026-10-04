@@ -201,6 +201,7 @@ def _validate(d: dict):
 
 # ============ PDF BUILDER ============
 AXA_BLUE = colors.HexColor("#0000A0")
+AXA_BLUE_LIGHT = colors.HexColor("#1E3FCC")
 TEXT_BLACK = colors.black
 PAGE_W, PAGE_H = A4
 MARGIN = 12 * mm
@@ -254,13 +255,20 @@ def _draw_barcode(c, data, x, y, w, h):
     try:
         import barcode
         from barcode.writer import ImageWriter
-        code = barcode.get("code128", data["policy_no"], writer=ImageWriter())
+        code_data = data["policy_no"].replace("/", "")
+        code = barcode.get("code128", code_data, writer=ImageWriter())
         buf = io.BytesIO()
-        code.write(buf, options={"module_height": 12, "font_size": 0, "quiet_zone": 0})
+        code.write(buf, options={
+            "module_height": 10,
+            "font_size": 0,
+            "quiet_zone": 1,
+            "module_width": 0.3,
+        })
         buf.seek(0)
         c.drawImage(ImageReader(buf), x, y, width=w, height=h,
-                    preserveAspectRatio=False, mask="auto")
-    except Exception:
+                    preserveAspectRatio=True, anchor="c", mask="auto")
+    except Exception as e:
+        logging.exception("barcode failed: %s", e)
         _rect(c, x, y, w, h)
 
 
@@ -337,16 +345,17 @@ def build_page1(c, data: dict):
     yr -= row_h
 
     _text(c, mid_x + 2 * mm, yr + 2 * mm, "Address:", bold=True)
-    yr -= 3 * mm
+    yr -= 4 * mm
     for ln in ["20 Gracechurch Street,", "London,", "United Kingdom,", "EC3V 0BG"]:
         _text(c, mid_x + 2 * mm, yr, ln)
         yr -= 4 * mm
     _hline(c, mid_x, yr, right_x)
 
-    bc_x = mid_x + 10 * mm
-    bc_y = table_bottom + 35 * mm
-    bc_w = right_x - mid_x - 20 * mm
-    bc_h = 30 * mm
+    # Barcode — в правом блоке, сразу под Address
+    bc_x = mid_x + 8 * mm
+    bc_y = yr - 28 * mm
+    bc_w = right_x - mid_x - 16 * mm
+    bc_h = 22 * mm
     _draw_barcode(c, data, bc_x, bc_y, bc_w, bc_h)
 
     period_y = table_bottom - 8 * mm
@@ -394,8 +403,8 @@ def build_page1(c, data: dict):
         "void ab initio (from inception).",
         "THE INSURANCE UNDER THIS POLICY IS SUBJECT TO CONDITIONS, CLAUSES, WARRANTIES, EXCLUSIONS ETC., ATTACHED.",
         "IMPORTANT: IN THE EVENT OF HOSPITALIZATION OF INSURED PERSON, INTIMATION SHOULD BE GIVEN TO THE COMPANY",
-        "IMMEDIATELY, HOWEVER, WITHIN 24 HRS FROM THE TIME OF ADMISSION.",
-        "In the event of the policy being withdrawn in future, intimation about the withdrawal will be sent 3 months prior to the date when",
+        "IMMEDIATELY, HOWEVER, WITHIN 24 HRS FROM THE TIME OF4 ADMISSION.",
+        "In the event of the policy * being withdrawn in future, intimation about the withdrawal will be sent 3 months prior to the date when",
         "renewal falls due. The insured will have the option of migrating to any other similar health insurance policy offered by the Company",
         "at the relevant time.",
         "Continuity of benefits for waiting period and bonus, if any and if applicable, will be given provided the insured had been renewing",
@@ -407,7 +416,7 @@ def build_page1(c, data: dict):
 
     footer_y = legal_y - 6 * mm
     _hline(c, MARGIN, footer_y, PAGE_W - MARGIN)
-    _text(c, MARGIN + 2 * mm, footer_y - 4 * mm, "Entered By", size=7)
+    _text(c, MARGIN + 2 * mm, footer_y -  mm, "Entered By", size=7)
     _text(c, MARGIN + 2 * mm, footer_y - 8 * mm, "STAR PORTAL", size=7)
     _text(c, MARGIN + 2 * mm, footer_y - 12 * mm, "IRDA Regn. No 129", size=7)
     _text(c, MARGIN + 2 * mm, footer_y - 16 * mm, "Corporate Identity Number U66010TN2005PLC056649", size=7)
@@ -425,6 +434,42 @@ def build_page1(c, data: dict):
 
     _text(c, right_x - 35 * mm, footer_y - 8 * mm, "Authorised signature", size=7)
     _hline(c, right_x - 30 * mm, footer_y - 18 * mm, right_x - 5 * mm)
+
+
+def _draw_doctor(c, bx, by, bw, bh):
+    """Рисует стикмен-врача белыми линиями на синем фоне."""
+    c.setFillColor(AXA_BLUE_LIGHT)
+    c.rect(bx, by, bw, bh, fill=1)
+
+    cx = bx + bw / 2
+    cy = by + bh / 2
+
+    c.setStrokeColor(colors.white)
+    c.setFillColor(colors.white)
+    c.setLineWidth(1.8)
+
+    # Голова
+    c.circle(cx, cy + 18 * mm, 6 * mm, stroke=1, fill=0)
+
+    # Тело
+    c.line(cx, cy + 12 * mm, cx, cy - 10 * mm)
+
+    # Руки
+    c.line(cx, cy + 8 * mm, cx - 12 * mm, cy + 2 * mm)
+    c.line(cx, cy + 8 * mm, cx + 12 * mm, cy + 2 * mm)
+
+    # Ноги
+    c.line(cx, cy - 10 * mm, cx - 8 * mm, cy - 22 * mm)
+    c.line(cx, cy - 10 * mm, cx + 8 * mm, cy - 22 * mm)
+
+    # Планшет в левой руке
+    c.rect(cx - 20 * mm, cy - 6 * mm, 9 * mm, 12 * mm, stroke=1, fill=0)
+
+    # Точки-декор справа сверху
+    c.setFillColor(colors.white)
+    for i in range(3):
+        for j in range(3):
+            c.circle(cx + 20 * mm + i * 3 * mm, cy + 18 * mm - j * 3 * mm, 0.6 * mm, fill=1)
 
 
 def build_page2(c):
@@ -493,13 +538,8 @@ def build_page2(c):
     by = y - 50 * mm
     bw = (PAGE_W - 2 * MARGIN) * 0.4
     bh = 60 * mm
-    c.setFillColor(colors.HexColor("#1E3FCC"))
-    c.rect(bx, by, bw, bh, fill=1)
-    c.setFillColor(colors.white)
-    c.setFont("Helvetica-Bold", 60)
-    c.drawString(bx + 15 * mm, by + bh / 2 - 8 * mm, "\U0001F468")
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(bx + 8 * mm, by + 5 * mm, "www.axahealth.co.uk")
+
+    _draw_doctor(c, bx, by, bw, bh)
 
 
 def build_pdf(data: dict) -> bytes:
