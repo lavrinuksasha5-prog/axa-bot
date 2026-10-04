@@ -21,15 +21,27 @@ from reportlab.pdfgen import canvas
 # ============ CONFIG ============
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
-# Ищем файлы с любым из расширений
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+
 def _find(name):
-    for ext in (".png", ".jpg", ".jpeg", ".PNG", ".JPG"):
-        if os.path.exists(name + ext):
-            return name + ext
+    """Ищем любой файл, в имени которого есть 'page1' или 'page2'."""
+    try:
+        files = os.listdir(".")
+    except Exception:
+        files = []
+    for f in files:
+        low = f.lower()
+        if name in low and low.endswith((".png", ".jpg", ".jpeg")):
+            return f
     return None
+
 
 PAGE1_IMG = _find("page1")
 PAGE2_IMG = _find("page2")
+
+logging.info(f"Files in cwd: {os.listdir('.')}")
+logging.info(f"Page1: {PAGE1_IMG}, Page2: {PAGE2_IMG}")
 
 PLANS = {
     "BASIC":    {"limit": "125,000 GBP", "tax": "330 GBP"},
@@ -45,10 +57,9 @@ OPERATOR_NAMES = [
 
 PAGE_W, PAGE_H = A4   # 210 × 297 мм
 
-# ============ КООРДИНАТЫ ПОЛЕЙ (мм, от левого-верхнего угла A4) ============
+# ============ КООРДИНАТЫ ПОЛЕЙ (мм от левого-верхнего угла A4) ============
 # (x, y_верх, ширина, высота)
 FIELDS = {
-    # левая колонка — значения
     "policy_no":       (24.5, 53.0, 50, 5),
     "proposer_code":   (46.0, 59.8, 50, 5),
     "proposer_name":   (46.0, 66.2, 55, 5),
@@ -60,20 +71,15 @@ FIELDS = {
     "receipt_no":      (28.9, 126.6, 50, 5),
     "receipt_date":    (28.9, 132.4, 50, 5),
     "service_tax":     (28.1, 138.2, 50, 5),
-    # правая колонка
     "prev_policy_no":  (136.4, 53.0, 55, 5),
-    # scheme / plan / limit
     "scheme":          (53.4, 155.2, 96, 5),
     "plan":            (50.5, 161.7, 96, 5),
     "limit":           (56.3, 168.1, 96, 5),
-    # период страхования — один блок
     "period":          (62.0, 146.5, 70, 5),
-    # таблица insured
     "insured_name":    (9.4,  183.5, 62, 5),
     "sex":             (70.5, 183.5, 25, 5),
     "dob":             (121.6, 183.5, 30, 5),
     "id_card":         (171.7, 183.5, 25, 5),
-    # barcode — прямоугольник затирания (закрывает старый barcode)
     "barcode_wipe":    (108.0, 112.0, 95, 29),
 }
 
@@ -240,12 +246,10 @@ def _stamp(c, key, value, size=FONT_SIZE, bold=False):
 
 
 def _draw_barcode(c, data):
-    # Затираем область старого barcode
     x, y, w, h = _coords("barcode_wipe")
     c.setFillColor(colors.white)
     c.rect(x, y, w, h, fill=1, stroke=0)
 
-    # Генерируем свой Code128-подобный
     text = data["policy_no"].replace("/", "")
     digest = hashlib.sha256(text.encode()).digest()
     bits = [1,1,0,1,0,0,1,1,0]
@@ -259,7 +263,6 @@ def _draw_barcode(c, data):
             bits.append((byte >> i) & 1)
     bits.extend([1,1,0,0,1,0,1,1,1,0,1,1])
 
-    # Отступ внутри области
     bx = x + 3 * mm
     by = y + 3 * mm
     bw = w - 6 * mm
@@ -281,7 +284,10 @@ def build_pdf(data):
 
     # -------- PAGE 1 --------
     if PAGE1_IMG:
+        logging.info(f"Drawing background from {PAGE1_IMG}")
         c.drawImage(ImageReader(PAGE1_IMG), 0, 0, width=PAGE_W, height=PAGE_H)
+    else:
+        logging.warning("PAGE1_IMG not found, drawing on white")
 
     _stamp(c, "policy_no",      data["policy_no"], bold=True)
     _stamp(c, "proposer_code",  data["proposer_code"])
@@ -309,7 +315,10 @@ def build_pdf(data):
 
     # -------- PAGE 2 --------
     if PAGE2_IMG:
+        logging.info(f"Drawing page2 from {PAGE2_IMG}")
         c.drawImage(ImageReader(PAGE2_IMG), 0, 0, width=PAGE_W, height=PAGE_H)
+    else:
+        logging.warning("PAGE2_IMG not found")
     c.showPage()
 
     c.save()
@@ -318,7 +327,6 @@ def build_pdf(data):
 
 
 # ============ BOT ============
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 bot = Bot(BOT_TOKEN)
 dp = Dispatcher()
 
