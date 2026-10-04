@@ -58,7 +58,7 @@ PAGE_W, PAGE_H = A4   # 210 × 297 мм
 
 # =============================================================
 # РЕЖИМ КАЛИБРОВКИ:
-#   True  = рисовать красные рамки вместо значений (для настройки)
+#   True  = рисовать сетку и красные крестики (для настройки)
 #   False = рабочий режим — стирать и писать значения
 # =============================================================
 CALIBRATE = True
@@ -67,27 +67,27 @@ CALIBRATE = True
 # ============ КООРДИНАТЫ ПОЛЕЙ (мм от левого-верхнего угла A4) ============
 # (x, y_верх, ширина, высота)
 FIELDS = {
-    "policy_no":       (40.0, 62.0, 50, 6),
-    "proposer_code":   (47.0, 70.0, 50, 6),
-    "proposer_name":   (47.0, 77.5, 55, 6),
-    "address":         (25.0, 85.0, 55, 6),
-    "phone":           (24.0, 144.0, 55, 6),
-    "email":           (24.0, 151.5, 60, 6),
-    "proposal_date":   (36.0, 159.0, 50, 6),
-    "inception_date":  (63.0, 166.5, 40, 6),
-    "receipt_no":      (34.0, 180.0, 50, 6),
-    "receipt_date":    (34.0, 187.5, 50, 6),
-    "service_tax":     (32.0, 194.5, 50, 6),
-    "prev_policy_no":  (152.0, 62.0, 55, 6),
-    "scheme":          (57.0, 224.5, 96, 6),
-    "plan":            (54.0, 232.5, 96, 6),
-    "limit":           (60.0, 240.5, 96, 6),
-    "period":          (62.0, 202.5, 70, 6),
-    "insured_name":    (8.0,  259.5, 62, 6),
-    "sex":             (72.0, 259.5, 25, 6),
-    "dob":             (120.0, 259.5, 30, 6),
-    "id_card":         (172.0, 259.5, 25, 6),
-    "barcode_wipe":    (108.0, 118.0, 95, 32),
+    "policy_no":       (36.0,  53.5,  45, 5),
+    "proposer_code":   (47.0,  60.0,  40, 5),
+    "proposer_name":   (47.0,  66.5,  55, 5),
+    "address":         (24.0,  73.0,  50, 5),
+    "phone":           (28.0, 100.0,  45, 5),
+    "email":           (24.0, 107.0,  55, 5),
+    "proposal_date":   (43.0, 113.5,  40, 5),
+    "inception_date":  (68.0, 120.0,  40, 5),
+    "receipt_no":      (39.0, 133.5,  40, 5),
+    "receipt_date":    (39.0, 140.5,  40, 5),
+    "service_tax":     (36.0, 147.0,  40, 5),
+    "prev_policy_no":  (152.0, 53.5,  45, 5),
+    "scheme":          (61.0, 160.5,  60, 5),
+    "plan":            (53.0, 168.0,  60, 5),
+    "limit":           (57.0, 176.0,  60, 5),
+    "period":          (69.0, 153.5,  60, 5),
+    "insured_name":    (16.0, 191.5,  60, 5),
+    "sex":             (105.0, 191.5, 20, 5),
+    "dob":             (150.0, 191.5, 30, 5),
+    "id_card":         (192.0, 191.5, 20, 5),
+    "barcode_wipe":    (108.0, 108.0, 90, 30),
 }
 
 FONT_SIZE = 8.5
@@ -243,18 +243,45 @@ def _coords(key):
     return x, y, w_mm * mm, h_mm * mm
 
 
+def _draw_grid(c):
+    """Миллиметровая сетка: толстые линии каждые 10 мм, тонкие каждые 5 мм."""
+    for x in range(0, 211, 5):
+        if x % 10 == 0:
+            c.setStrokeColor(colors.HexColor("#F4A0A0"))
+            c.setLineWidth(0.4)
+        else:
+            c.setStrokeColor(colors.HexColor("#F8D0D0"))
+            c.setLineWidth(0.15)
+        c.line(x * mm, 0, x * mm, PAGE_H)
+    for y in range(0, 298, 5):
+        if y % 10 == 0:
+            c.setStrokeColor(colors.HexColor("#F4A0A0"))
+            c.setLineWidth(0.4)
+        else:
+            c.setStrokeColor(colors.HexColor("#F8D0D0"))
+            c.setLineWidth(0.15)
+        c.line(0, PAGE_H - y * mm, PAGE_W, PAGE_H - y * mm)
+    c.setFillColor(colors.HexColor("#C00000"))
+    c.setFont("Helvetica-Bold", 5)
+    for x in range(0, 211, 10):
+        c.drawString(x * mm + 0.5, PAGE_H - 3 * mm, str(x))
+    for y in range(0, 298, 10):
+        c.drawString(0.5 * mm, PAGE_H - y * mm - 1.5 * mm, str(y))
+
+
 def _stamp(c, key, value, size=FONT_SIZE, bold=False):
     x, y, w, h = _coords(key)
     if CALIBRATE:
-        # Режим настройки: рисуем красную рамку + имя поля
+        cx = x + w / 2
+        cy = y + h / 2
         c.setStrokeColor(colors.red)
-        c.setLineWidth(0.7)
-        c.rect(x, y, w, h, stroke=1, fill=0)
+        c.setLineWidth(1.4)
+        c.line(cx - 2 * mm, cy, cx + 2 * mm, cy)
+        c.line(cx, cy - 2 * mm, cx, cy + 2 * mm)
         c.setFillColor(colors.red)
-        c.setFont("Helvetica", 5)
-        c.drawString(x, y + h + 0.4 * mm, key)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(x, y + h + 0.6 * mm, key)
     else:
-        # Рабочий режим: стираем + пишем
         c.setFillColor(colors.white)
         c.rect(x, y, w, h, fill=1, stroke=0)
         c.setFillColor(colors.black)
@@ -265,12 +292,15 @@ def _stamp(c, key, value, size=FONT_SIZE, bold=False):
 def _draw_barcode(c, data):
     x, y, w, h = _coords("barcode_wipe")
     if CALIBRATE:
+        cx = x + w / 2
+        cy = y + h / 2
         c.setStrokeColor(colors.red)
-        c.setLineWidth(0.7)
-        c.rect(x, y, w, h, stroke=1, fill=0)
+        c.setLineWidth(1.4)
+        c.line(cx - 3 * mm, cy, cx + 3 * mm, cy)
+        c.line(cx, cy - 3 * mm, cx, cy + 3 * mm)
         c.setFillColor(colors.red)
-        c.setFont("Helvetica", 5)
-        c.drawString(x, y + h + 0.4 * mm, "barcode_wipe")
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(x, y + h + 0.6 * mm, "BARCODE")
         return
 
     # Рабочий режим: стираем + рисуем свой штрих-код
@@ -315,6 +345,9 @@ def build_pdf(data):
         c.drawImage(ImageReader(PAGE1_IMG), 0, 0, width=PAGE_W, height=PAGE_H)
     else:
         logging.warning("PAGE1_IMG not found, drawing on white")
+
+    if CALIBRATE:
+        _draw_grid(c)
 
     _stamp(c, "policy_no",      data["policy_no"], bold=True)
     _stamp(c, "proposer_code",  data["proposer_code"])
