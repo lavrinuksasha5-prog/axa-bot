@@ -1,0 +1,5 @@
+aiogram==3.13.1
+reportlab==4.2.5
+python-barcode==0.15.1
+python-dateutil==2.9.0
+pillow==10.4.0
