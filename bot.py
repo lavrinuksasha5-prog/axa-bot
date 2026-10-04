@@ -38,13 +38,12 @@ def _find(*names):
     return None
 
 
-HEAD1_IMG   = _find("head1", "header1")
 HEAD2_IMG   = _find("head2", "header2")
 BARCODE_IMG = _find("barcode")
 DOCTOR_IMG  = _find("doctor")
 
 logging.info(f"Files in cwd: {os.listdir('.')}")
-logging.info(f"Head1: {HEAD1_IMG}, Head2: {HEAD2_IMG}, Barcode: {BARCODE_IMG}, Doctor: {DOCTOR_IMG}")
+logging.info(f"Head2: {HEAD2_IMG}, Barcode: {BARCODE_IMG}, Doctor: {DOCTOR_IMG}")
 
 PLANS = {
     "BASIC":    {"limit": "125,000 GBP", "tax": "330 GBP"},
@@ -238,15 +237,13 @@ def _rect(c, x, y, w, h, width=0.5):
 
 
 def build_page1(c, data):
-    # ===== ШАПКА (картинка) =====
     header_h = 27 * mm
     header_y = PAGE_H - header_h
-    if HEAD1_IMG:
-        c.drawImage(ImageReader(HEAD1_IMG), 0, header_y,
+    if HEAD2_IMG:
+        c.drawImage(ImageReader(HEAD2_IMG), 0, header_y,
                     width=PAGE_W, height=header_h,
                     preserveAspectRatio=False, mask="auto")
 
-    # ===== Таблица =====
     table_top = header_y - 4 * mm
     mid_x = MARGIN + (PAGE_W - 2 * MARGIN) * 0.5
     right_x = PAGE_W - MARGIN
@@ -286,7 +283,6 @@ def build_page1(c, data):
         _hline(c, MARGIN, y, mid_x)
         y -= row_h
 
-    # Правая колонка
     yr = table_top - row_h
     _text_label(c, mid_x + 2 * mm, yr + 2.2 * mm, "Previous Policy No.:", data["prev_policy_no"])
     _hline(c, mid_x, yr, right_x)
@@ -307,7 +303,6 @@ def build_page1(c, data):
         yr -= 4 * mm
     _hline(c, mid_x, yr, right_x)
 
-    # ===== Barcode (картинка) =====
     bc_x = mid_x + 6 * mm
     bc_y = table_bottom + 6 * mm
     bc_w = right_x - mid_x - 12 * mm
@@ -337,14 +332,12 @@ def build_page1(c, data):
                 c.rect(cur, bc_y, module_w, bc_h, fill=1, stroke=0)
             cur += module_w
 
-    # ===== PERIOD =====
     period_y = table_bottom - 6 * mm
     _rect(c, MARGIN, period_y, PAGE_W - 2 * MARGIN, 7 * mm)
     _text_label(c, MARGIN + 2 * mm, period_y + 2.4 * mm,
                 "PERIOD OF INSURANCE FROM:",
                 f"{data['period_from']} TO {data['period_to']}")
 
-    # ===== SCHEME / PLAN / LIMIT =====
     sp_top = period_y - 8 * mm
     sp_h = 21 * mm
     _rect(c, MARGIN, sp_top - sp_h, PAGE_W - 2 * MARGIN, sp_h)
@@ -359,7 +352,6 @@ def build_page1(c, data):
             _hline(c, MARGIN, yy + line_h, PAGE_W - MARGIN)
         _text_label(c, MARGIN + 2 * mm, yy + 3 * mm, lbl, val, size=9)
 
-    # ===== NAME OF INSURED =====
     ins_top = sp_top - sp_h - 5 * mm
     ins_h = 13 * mm
     _rect(c, MARGIN, ins_top - ins_h, PAGE_W - 2 * MARGIN, ins_h)
@@ -379,7 +371,6 @@ def build_page1(c, data):
         c.setFont("Helvetica", 8.5)
         c.drawCentredString(cx, ins_top - 10 * mm, v)
 
-    # ===== Юр.текст =====
     legal_y = ins_top - ins_h - 5 * mm
     legal_lines = [
         "Warranted that in case of dishonour of premium cheque(s), the Company shall not be liable under the policy and the policy shall be",
@@ -397,7 +388,6 @@ def build_page1(c, data):
         _text(c, MARGIN + 2 * mm, legal_y, ln, size=7.8)
         legal_y -= 3.8 * mm
 
-    # ===== Footer =====
     footer_y = legal_y - 3 * mm
     _hline(c, MARGIN, footer_y, PAGE_W - MARGIN)
 
@@ -422,7 +412,6 @@ def build_page1(c, data):
 
 
 def build_page2(c, data):
-    # ===== ШАПКА (картинка) =====
     header_h = 27 * mm
     header_y = PAGE_H - header_h
     if HEAD2_IMG:
@@ -430,7 +419,6 @@ def build_page2(c, data):
                     width=PAGE_W, height=header_h,
                     preserveAspectRatio=False, mask="auto")
 
-    # ===== 3 блока Basic / Standard / Prime =====
     blocks = [
         ("Basic", "£125,000", [
             "Coverage Scope: Covers accidental death and permanent disability",
@@ -463,7 +451,6 @@ def build_page2(c, data):
             y -= 5 * mm
         y -= 8 * mm
 
-    # ===== Низ: врач (картинка) =====
     bottom_h = 70 * mm
     if DOCTOR_IMG:
         c.drawImage(ImageReader(DOCTOR_IMG), 0, 0,
@@ -542,7 +529,7 @@ async def main():
     if not BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан")
     logging.info("Starting bot...")
-    logging.info(f"Head1: {HEAD1_IMG}, Head2: {HEAD2_IMG}, Barcode: {BARCODE_IMG}, Doctor: {DOCTOR_IMG}")
+    logging.info(f"Head2: {HEAD2_IMG}, Barcode: {BARCODE_IMG}, Doctor: {DOCTOR_IMG}")
     await dp.start_polling(bot)
 
 
