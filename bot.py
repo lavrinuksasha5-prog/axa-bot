@@ -237,12 +237,13 @@ def _rect(c, x, y, w, h, width=0.5):
 
 
 def build_page1(c, data):
-    header_h = 27 * mm
+    # ===== Шапка — сохраняем пропорции =====
+    header_h = 20 * mm
     header_y = PAGE_H - header_h
     if HEAD2_IMG:
         c.drawImage(ImageReader(HEAD2_IMG), 0, header_y,
                     width=PAGE_W, height=header_h,
-                    preserveAspectRatio=False, mask="auto")
+                    preserveAspectRatio=True, anchor="nw", mask="auto")
 
     table_top = header_y - 4 * mm
     mid_x = MARGIN + (PAGE_W - 2 * MARGIN) * 0.5
@@ -412,13 +413,15 @@ def build_page1(c, data):
 
 
 def build_page2(c, data):
-    header_h = 27 * mm
+    # ===== Шапка — сохраняем пропорции =====
+    header_h = 20 * mm
     header_y = PAGE_H - header_h
     if HEAD2_IMG:
         c.drawImage(ImageReader(HEAD2_IMG), 0, header_y,
                     width=PAGE_W, height=header_h,
-                    preserveAspectRatio=False, mask="auto")
+                    preserveAspectRatio=True, anchor="nw", mask="auto")
 
+    # ===== 3 блока Basic / Standard / Prime =====
     blocks = [
         ("Basic", "£125,000", [
             "Coverage Scope: Covers accidental death and permanent disability",
@@ -451,11 +454,12 @@ def build_page2(c, data):
             y -= 5 * mm
         y -= 8 * mm
 
-    bottom_h = 70 * mm
+    # ===== Низ: врач (картинка, пропорции сохранены) =====
+    bottom_h = 60 * mm
     if DOCTOR_IMG:
         c.drawImage(ImageReader(DOCTOR_IMG), 0, 0,
                     width=PAGE_W, height=bottom_h,
-                    preserveAspectRatio=False, mask="auto")
+                    preserveAspectRatio=True, anchor="sw", mask="auto")
     else:
         c.setFillColor(colors.HexColor("#E8E9F2"))
         c.rect(0, 0, PAGE_W, bottom_h, fill=1, stroke=0)
