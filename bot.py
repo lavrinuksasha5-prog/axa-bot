@@ -20,27 +20,31 @@ from reportlab.pdfgen import canvas
 
 # ============ CONFIG ============
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 
-def _find(name):
+def _find(*names):
     try:
         files = os.listdir(".")
     except Exception:
         files = []
     for f in files:
         low = f.lower()
-        if name in low and low.endswith((".png", ".jpg", ".jpeg")):
-            return f
+        if not low.endswith((".png", ".jpg", ".jpeg")):
+            continue
+        for n in names:
+            if n in low:
+                return f
     return None
 
 
-PAGE1_IMG = _find("page1")
-PAGE2_IMG = _find("page2")
+HEAD1_IMG   = _find("head1", "header1")
+HEAD2_IMG   = _find("head2", "header2")
+BARCODE_IMG = _find("barcode")
+DOCTOR_IMG  = _find("doctor")
 
 logging.info(f"Files in cwd: {os.listdir('.')}")
-logging.info(f"Page1: {PAGE1_IMG}, Page2: {PAGE2_IMG}")
+logging.info(f"Head1: {HEAD1_IMG}, Head2: {HEAD2_IMG}, Barcode: {BARCODE_IMG}, Doctor: {DOCTOR_IMG}")
 
 PLANS = {
     "BASIC":    {"limit": "125,000 GBP", "tax": "330 GBP"},
@@ -54,48 +58,15 @@ OPERATOR_NAMES = [
     "Karthik J", "Manoj D", "Ganesh L", "Praveen H", "Naveen C",
 ]
 
-PAGE_W, PAGE_H = A4   # 210 × 297 мм
+PAGE_W, PAGE_H = A4
+MARGIN = 12 * mm
 
-# =============================================================
-# РЕЖИМ КАЛИБРОВКИ:
-#   True  = рисовать сетку и красные крестики (для настройки)
-#   False = рабочий режим — стирать и писать значения
-# =============================================================
-CALIBRATE = True
+AXA_BLUE   = colors.HexColor("#0F1FA8")
+AXA_BAND   = colors.HexColor("#D6D7E4")
+TEXT_BLACK = colors.black
 
 
-# ============ КООРДИНАТЫ ПОЛЕЙ (мм от левого-верхнего угла A4) ============
-# (x, y_верх, ширина, высота)
-FIELDS = {
-    "policy_no":       (36.0,  53.5,  45, 5),
-    "proposer_code":   (47.0,  60.0,  40, 5),
-    "proposer_name":   (47.0,  66.5,  55, 5),
-    "address":         (24.0,  73.0,  50, 5),
-    "phone":           (28.0, 100.0,  45, 5),
-    "email":           (24.0, 107.0,  55, 5),
-    "proposal_date":   (43.0, 113.5,  40, 5),
-    "inception_date":  (68.0, 120.0,  40, 5),
-    "receipt_no":      (39.0, 133.5,  40, 5),
-    "receipt_date":    (39.0, 140.5,  40, 5),
-    "service_tax":     (36.0, 147.0,  40, 5),
-    "prev_policy_no":  (152.0, 53.5,  45, 5),
-    "scheme":          (61.0, 160.5,  60, 5),
-    "plan":            (53.0, 168.0,  60, 5),
-    "limit":           (57.0, 176.0,  60, 5),
-    "period":          (69.0, 153.5,  60, 5),
-    "insured_name":    (16.0, 191.5,  60, 5),
-    "sex":             (105.0, 191.5, 20, 5),
-    "dob":             (150.0, 191.5, 30, 5),
-    "id_card":         (192.0, 191.5, 20, 5),
-    "barcode_wipe":    (108.0, 108.0, 90, 30),
-}
-
-FONT_SIZE = 8.5
-FONT_NAME = "Helvetica"
-FONT_BOLD = "Helvetica-Bold"
-
-
-# ============ GENERATOR ============
+# ============ ГЕНЕРАТОРЫ ============
 def gen_policy_no():
     return f"P/{random.randint(700000000,799999999)}/{random.randint(10000,99999)}/{random.randint(1,9)}"
 
@@ -148,7 +119,8 @@ def build_data(user):
         "receipt_no": gen_receipt_no(),
         "receipt_date": user["ДАТА ЧЕКА"],
         "service_tax": pd["tax"],
-        "period": f"{fmt_date(pf)} TO {fmt_date(pt)}",
+        "period_from": fmt_date(pf),
+        "period_to": fmt_date(pt),
         "scheme": user["СХЕМА"],
         "plan": plan,
         "limit": pd["limit"],
@@ -163,7 +135,7 @@ def build_data(user):
     }
 
 
-# ============ PARSER ============
+# ============ ПАРСЕР ============
 REQUIRED_KEYS = [
     "ФИО", "АДРЕС", "ТЕЛЕФОН", "EMAIL",
     "ДАТА ПРОПОЗАЛА", "ДАТА НАЧАЛА", "ДАТА ЧЕКА",
@@ -235,102 +207,279 @@ def _validate(d):
         raise ValueError("СХЕМА: 1 ADULT / 2 ADULTS / 1 ADULT + 1 CHILD / FAMILY")
 
 
-# ============ PDF BUILDER ============
-def _coords(key):
-    x_mm, y_mm, w_mm, h_mm = FIELDS[key]
-    x = x_mm * mm
-    y = PAGE_H - (y_mm + h_mm) * mm
-    return x, y, w_mm * mm, h_mm * mm
+# ============ PDF ============
+def _text(c, x, y, txt, size=8.5, bold=False, color=TEXT_BLACK):
+    c.setFont("Helvetica-Bold" if bold else "Helvetica", size)
+    c.setFillColor(color)
+    c.drawString(x, y, txt)
+
+def _text_label(c, x, y, label, value, size=8.5):
+    c.setFont("Helvetica-Bold", size)
+    c.setFillColor(TEXT_BLACK)
+    c.drawString(x, y, label)
+    w = c.stringWidth(label, "Helvetica-Bold", size)
+    c.setFont("Helvetica", size)
+    c.drawString(x + w + 2, y, value)
+
+def _hline(c, x1, y, x2, width=0.5):
+    c.setStrokeColor(AXA_BLUE)
+    c.setLineWidth(width)
+    c.line(x1, y, x2, y)
+
+def _vline(c, x, y1, y2, width=0.5):
+    c.setStrokeColor(AXA_BLUE)
+    c.setLineWidth(width)
+    c.line(x, y1, x, y2)
+
+def _rect(c, x, y, w, h, width=0.5):
+    c.setStrokeColor(AXA_BLUE)
+    c.setLineWidth(width)
+    c.rect(x, y, w, h)
 
 
-def _draw_grid(c):
-    """Миллиметровая сетка: толстые линии каждые 10 мм, тонкие каждые 5 мм."""
-    for x in range(0, 211, 5):
-        if x % 10 == 0:
-            c.setStrokeColor(colors.HexColor("#F4A0A0"))
-            c.setLineWidth(0.4)
-        else:
-            c.setStrokeColor(colors.HexColor("#F8D0D0"))
-            c.setLineWidth(0.15)
-        c.line(x * mm, 0, x * mm, PAGE_H)
-    for y in range(0, 298, 5):
-        if y % 10 == 0:
-            c.setStrokeColor(colors.HexColor("#F4A0A0"))
-            c.setLineWidth(0.4)
-        else:
-            c.setStrokeColor(colors.HexColor("#F8D0D0"))
-            c.setLineWidth(0.15)
-        c.line(0, PAGE_H - y * mm, PAGE_W, PAGE_H - y * mm)
-    c.setFillColor(colors.HexColor("#C00000"))
-    c.setFont("Helvetica-Bold", 5)
-    for x in range(0, 211, 10):
-        c.drawString(x * mm + 0.5, PAGE_H - 3 * mm, str(x))
-    for y in range(0, 298, 10):
-        c.drawString(0.5 * mm, PAGE_H - y * mm - 1.5 * mm, str(y))
+def build_page1(c, data):
+    # ===== ШАПКА (картинка) =====
+    header_h = 27 * mm
+    header_y = PAGE_H - header_h
+    if HEAD1_IMG:
+        c.drawImage(ImageReader(HEAD1_IMG), 0, header_y,
+                    width=PAGE_W, height=header_h,
+                    preserveAspectRatio=False, mask="auto")
 
+    # ===== Таблица =====
+    table_top = header_y - 4 * mm
+    mid_x = MARGIN + (PAGE_W - 2 * MARGIN) * 0.5
+    right_x = PAGE_W - MARGIN
+    row_h = 6.5 * mm
 
-def _stamp(c, key, value, size=FONT_SIZE, bold=False):
-    x, y, w, h = _coords(key)
-    if CALIBRATE:
-        cx = x + w / 2
-        cy = y + h / 2
-        c.setStrokeColor(colors.red)
-        c.setLineWidth(1.4)
-        c.line(cx - 2 * mm, cy, cx + 2 * mm, cy)
-        c.line(cx, cy - 2 * mm, cx, cy + 2 * mm)
-        c.setFillColor(colors.red)
-        c.setFont("Helvetica-Bold", 6)
-        c.drawString(x, y + h + 0.6 * mm, key)
+    table_h = row_h * 3 + 22 * mm + row_h * 8
+    table_bottom = table_top - table_h
+
+    _rect(c, MARGIN, table_bottom, PAGE_W - 2 * MARGIN, table_h)
+    _vline(c, mid_x, table_bottom, table_top)
+
+    y = table_top - row_h
+    for label, value in [
+        ("Policy No.:", data["policy_no"]),
+        ("Proposer's Code:", data["proposer_code"]),
+        ("Proposer's Name:", data["proposer_name"]),
+    ]:
+        _text_label(c, MARGIN + 2 * mm, y + 2.2 * mm, label, value)
+        _hline(c, MARGIN, y, mid_x)
+        y -= row_h
+
+    _text_label(c, MARGIN + 2 * mm, y + 2.2 * mm, "Address:", data["address"])
+    y -= 22 * mm
+    _hline(c, MARGIN, y, mid_x)
+
+    for label, value in [
+        ("Phone No.:", data["phone"]),
+        ("E-mail id:", data["email"]),
+        ("Proposal date:", data["proposal_date"]),
+        ("Date of Inception of first policy:", data["inception_date"]),
+        ("Renewal Year:", "NEW"),
+        ("Receipt No.:", data["receipt_no"]),
+        ("Receipt Date:", data["receipt_date"]),
+        ("Service Tax:", data["service_tax"]),
+    ]:
+        _text_label(c, MARGIN + 2 * mm, y + 2.2 * mm, label, value)
+        _hline(c, MARGIN, y, mid_x)
+        y -= row_h
+
+    # Правая колонка
+    yr = table_top - row_h
+    _text_label(c, mid_x + 2 * mm, yr + 2.2 * mm, "Previous Policy No.:", data["prev_policy_no"])
+    _hline(c, mid_x, yr, right_x)
+    yr -= row_h
+
+    _text_label(c, mid_x + 2 * mm, yr + 2.2 * mm, "E-mail id:", "info@axahealth.co.uk")
+    _hline(c, mid_x, yr, right_x)
+    yr -= row_h
+
+    _text_label(c, mid_x + 2 * mm, yr + 2.2 * mm, "Issuing Office Name:", "Online Business")
+    _hline(c, mid_x, yr, right_x)
+    yr -= row_h
+
+    _text(c, mid_x + 2 * mm, yr + 2.2 * mm, "Address:", bold=True)
+    yr -= 4 * mm
+    for ln in ["20 Gracechurch Street,", "London,", "United Kingdom,", "EC3V 0BG"]:
+        _text(c, mid_x + 2 * mm, yr, ln)
+        yr -= 4 * mm
+    _hline(c, mid_x, yr, right_x)
+
+    # ===== Barcode (картинка) =====
+    bc_x = mid_x + 6 * mm
+    bc_y = table_bottom + 6 * mm
+    bc_w = right_x - mid_x - 12 * mm
+    bc_h = 28 * mm
+    if BARCODE_IMG:
+        c.drawImage(ImageReader(BARCODE_IMG), bc_x, bc_y,
+                    width=bc_w, height=bc_h,
+                    preserveAspectRatio=True, anchor="c", mask="auto")
     else:
-        c.setFillColor(colors.white)
-        c.rect(x, y, w, h, fill=1, stroke=0)
+        text = data["policy_no"].replace("/", "")
+        digest = hashlib.sha256(text.encode()).digest()
+        bits = [1,1,0,1,0,0,1,1,0]
+        for ch in text:
+            v = ord(ch)
+            for i in range(5, -1, -1):
+                b = (v >> i) & 1
+                bits.append(b); bits.append(b ^ 1)
+        for byte in digest[:4]:
+            for i in range(7, -1, -1):
+                bits.append((byte >> i) & 1)
+        bits.extend([1,1,0,0,1,0,1,1,1,0,1,1])
+        module_w = bc_w / len(bits)
         c.setFillColor(colors.black)
-        c.setFont(FONT_BOLD if bold else FONT_NAME, size)
-        c.drawString(x + 0.4 * mm, y + h * 0.30, value)
+        cur = bc_x
+        for b in bits:
+            if b:
+                c.rect(cur, bc_y, module_w, bc_h, fill=1, stroke=0)
+            cur += module_w
+
+    # ===== PERIOD =====
+    period_y = table_bottom - 6 * mm
+    _rect(c, MARGIN, period_y, PAGE_W - 2 * MARGIN, 7 * mm)
+    _text_label(c, MARGIN + 2 * mm, period_y + 2.4 * mm,
+                "PERIOD OF INSURANCE FROM:",
+                f"{data['period_from']} TO {data['period_to']}")
+
+    # ===== SCHEME / PLAN / LIMIT =====
+    sp_top = period_y - 8 * mm
+    sp_h = 21 * mm
+    _rect(c, MARGIN, sp_top - sp_h, PAGE_W - 2 * MARGIN, sp_h)
+    line_h = sp_h / 3
+    for i, (lbl, val) in enumerate([
+        ("SCHEME - DESCRIPTION:", data["scheme"]),
+        ("PLAN - DESCRIPTION:", data["plan"]),
+        ("LIMIT OF COVERAGE:", data["limit"]),
+    ]):
+        yy = sp_top - (i + 1) * line_h
+        if i > 0:
+            _hline(c, MARGIN, yy + line_h, PAGE_W - MARGIN)
+        _text_label(c, MARGIN + 2 * mm, yy + 3 * mm, lbl, val, size=9)
+
+    # ===== NAME OF INSURED =====
+    ins_top = sp_top - sp_h - 5 * mm
+    ins_h = 13 * mm
+    _rect(c, MARGIN, ins_top - ins_h, PAGE_W - 2 * MARGIN, ins_h)
+    _hline(c, MARGIN, ins_top - 6.5 * mm, PAGE_W - MARGIN)
+
+    col_w = (PAGE_W - 2 * MARGIN) / 4
+    for i in [1, 2, 3]:
+        _vline(c, MARGIN + i * col_w, ins_top - ins_h, ins_top)
+
+    headers = ["Name of the Insured", "Sex", "Date of Birth", "ID Card No."]
+    values = [data["insured_name"], data["sex"], data["dob"], data["id_card"]]
+    for i, (h, v) in enumerate(zip(headers, values)):
+        cx = MARGIN + i * col_w + col_w / 2
+        c.setFont("Helvetica-Bold", 9)
+        c.setFillColor(TEXT_BLACK)
+        c.drawCentredString(cx, ins_top - 4.5 * mm, h)
+        c.setFont("Helvetica", 8.5)
+        c.drawCentredString(cx, ins_top - 10 * mm, v)
+
+    # ===== Юр.текст =====
+    legal_y = ins_top - ins_h - 5 * mm
+    legal_lines = [
+        "Warranted that in case of dishonour of premium cheque(s), the Company shall not be liable under the policy and the policy shall be",
+        "void ab initio (from inception).",
+        "THE INSURANCE UNDER THIS POLICY IS SUBJECT TO CONDITIONS, CLAUSES, WARRANTIES, EXCLUSIONS ETC., ATTACHED.",
+        "IMPORTANT: IN THE EVENT OF HOSPITALIZATION OF INSURED PERSON, INTIMATION SHOULD BE GIVEN TO THE COMPANY",
+        "IMMEDIATELY, HOWEVER, WITHIN 24 HRS FROM THE TIME OF ADMISSION.",
+        "In the event of the policy being withdrawn in future, intimation about the withdrawal will be sent 3 months prior to the date when",
+        "renewal falls due. The insured will have the option of migrating to any other similar health insurance policy offered by the Company",
+        "at the relevant time.",
+        "Continuity of benefits for waiting period and bonus, if any and if applicable, will be given provided the insured had been renewing",
+        "the policy without any break (or renewing within the grace period offered).",
+    ]
+    for ln in legal_lines:
+        _text(c, MARGIN + 2 * mm, legal_y, ln, size=7.8)
+        legal_y -= 3.8 * mm
+
+    # ===== Footer =====
+    footer_y = legal_y - 3 * mm
+    _hline(c, MARGIN, footer_y, PAGE_W - MARGIN)
+
+    _text(c, MARGIN + 2 * mm, footer_y - 4 * mm, "Entered By", size=6.5)
+    _text(c, MARGIN + 2 * mm, footer_y - 7.5 * mm, "STAR PORTAL", size=6.5)
+    _text(c, MARGIN + 2 * mm, footer_y - 11 * mm, "IRDA Regn. No 129", size=6.5)
+    _text(c, MARGIN + 2 * mm, footer_y - 14.5 * mm, "Corporate Identity Number U66010TN2005PLC056649", size=6.5)
+    _text(c, MARGIN + 2 * mm, footer_y - 20 * mm, data["operator_name"], size=6.5)
+    _text(c, MARGIN + 2 * mm, footer_y - 23.5 * mm, f"CN={data['operator_cn']}", size=6.5)
+    _text(c, MARGIN + 2 * mm, footer_y - 27 * mm, "SERIAL_NUMBER=" + data["serial"].split("\n")[0], size=6)
+    _text(c, MARGIN + 2 * mm, footer_y - 30.5 * mm, data["serial"].split("\n")[1], size=6)
+
+    _text(c, mid_x + 2 * mm, footer_y - 4 * mm, "This is an electronically", size=6.5)
+    _text(c, mid_x + 2 * mm, footer_y - 7.5 * mm, "generated document", size=6.5)
+    _text(c, mid_x + 2 * mm, footer_y - 11 * mm, "(Policy Schedule).", size=6.5)
+    _text(c, mid_x + 2 * mm, footer_y - 14.5 * mm, "Consolidated stamp", size=6.5)
+    _text(c, mid_x + 2 * mm, footer_y - 18 * mm, "paid vide certificate.", size=6.5)
+    _text(c, mid_x + 2 * mm, footer_y - 23 * mm, "No:" + data["csd"], size=6.5)
+
+    _text(c, right_x - 30 * mm, footer_y - 7 * mm, "Authorised signature", size=6.5)
+    _hline(c, right_x - 28 * mm, footer_y - 16 * mm, right_x - 4 * mm)
 
 
-def _draw_barcode(c, data):
-    x, y, w, h = _coords("barcode_wipe")
-    if CALIBRATE:
-        cx = x + w / 2
-        cy = y + h / 2
-        c.setStrokeColor(colors.red)
-        c.setLineWidth(1.4)
-        c.line(cx - 3 * mm, cy, cx + 3 * mm, cy)
-        c.line(cx, cy - 3 * mm, cx, cy + 3 * mm)
-        c.setFillColor(colors.red)
-        c.setFont("Helvetica-Bold", 6)
-        c.drawString(x, y + h + 0.6 * mm, "BARCODE")
-        return
+def build_page2(c, data):
+    # ===== ШАПКА (картинка) =====
+    header_h = 27 * mm
+    header_y = PAGE_H - header_h
+    if HEAD2_IMG:
+        c.drawImage(ImageReader(HEAD2_IMG), 0, header_y,
+                    width=PAGE_W, height=header_h,
+                    preserveAspectRatio=False, mask="auto")
 
-    # Рабочий режим: стираем + рисуем свой штрих-код
-    c.setFillColor(colors.white)
-    c.rect(x, y, w, h, fill=1, stroke=0)
+    # ===== 3 блока Basic / Standard / Prime =====
+    blocks = [
+        ("Basic", "£125,000", [
+            "Coverage Scope: Covers accidental death and permanent disability",
+        ]),
+        ("Standard", "£295,000", [
+            "Coverage Scope: Extends coverage to include work-related injuries and illnesses",
+            "Additional Benefits: Includes rehabilitation benefits for work-related injuries",
+        ]),
+        ("Prime", "£575,000", [
+            "Comprehensive coverage for medical expenses, including hospitalization, dental care,",
+            "and mental health services",
+            "Additional Benefits: Offers coverage for pre-existing conditions and worldwide emergency",
+            "medical assistance",
+        ]),
+    ]
 
-    text = data["policy_no"].replace("/", "")
-    digest = hashlib.sha256(text.encode()).digest()
-    bits = [1,1,0,1,0,0,1,1,0]
-    for ch in text:
-        v = ord(ch)
-        for i in range(5, -1, -1):
-            b = (v >> i) & 1
-            bits.append(b); bits.append(b ^ 1)
-    for byte in digest[:4]:
-        for i in range(7, -1, -1):
-            bits.append((byte >> i) & 1)
-    bits.extend([1,1,0,0,1,0,1,1,1,0,1,1])
+    y = header_y - 8 * mm
+    for title, limit, lines in blocks:
+        c.setFillColor(AXA_BLUE)
+        c.rect(MARGIN, y - 8 * mm, PAGE_W - 2 * MARGIN, 8 * mm, fill=1)
+        c.setFillColor(colors.white)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(MARGIN + 4 * mm, y - 6 * mm, title)
 
-    bx = x + 3 * mm
-    by = y + 3 * mm
-    bw = w - 6 * mm
-    bh = h - 6 * mm
-    module_w = bw / len(bits)
-    c.setFillColor(colors.black)
-    cur = bx
-    for b in bits:
-        if b:
-            c.rect(cur, by, module_w, bh, fill=1, stroke=0)
-        cur += module_w
+        y -= 12 * mm
+        _text(c, MARGIN + 4 * mm, y, f"Coverage up to {limit}", size=10, bold=True)
+        y -= 6 * mm
+        for ln in lines:
+            _text(c, MARGIN + 4 * mm, y, ln, size=9)
+            y -= 5 * mm
+        y -= 8 * mm
+
+    # ===== Низ: врач (картинка) =====
+    bottom_h = 70 * mm
+    if DOCTOR_IMG:
+        c.drawImage(ImageReader(DOCTOR_IMG), 0, 0,
+                    width=PAGE_W, height=bottom_h,
+                    preserveAspectRatio=False, mask="auto")
+    else:
+        c.setFillColor(colors.HexColor("#E8E9F2"))
+        c.rect(0, 0, PAGE_W, bottom_h, fill=1, stroke=0)
+        c.setFillColor(AXA_BLUE)
+        c.setFont("Helvetica-Bold", 32)
+        c.drawString(MARGIN + 4 * mm, bottom_h - 25 * mm, "From")
+        c.setFont("Helvetica-Bold", 48)
+        c.drawString(MARGIN + 4 * mm, bottom_h - 45 * mm, "£235")
+        c.setFont("Helvetica-Bold", 20)
+        c.drawString(MARGIN + 4 * mm, bottom_h - 58 * mm, "Medical Plans")
+        c.drawString(MARGIN + 4 * mm, bottom_h - 66 * mm, "For Your Family.")
 
 
 def build_pdf(data):
@@ -339,46 +488,9 @@ def build_pdf(data):
     c.setTitle(""); c.setAuthor(""); c.setSubject("")
     c.setCreator(""); c.setProducer("")
 
-    # -------- PAGE 1 --------
-    if PAGE1_IMG:
-        logging.info(f"Drawing background from {PAGE1_IMG}")
-        c.drawImage(ImageReader(PAGE1_IMG), 0, 0, width=PAGE_W, height=PAGE_H)
-    else:
-        logging.warning("PAGE1_IMG not found, drawing on white")
-
-    if CALIBRATE:
-        _draw_grid(c)
-
-    _stamp(c, "policy_no",      data["policy_no"], bold=True)
-    _stamp(c, "proposer_code",  data["proposer_code"])
-    _stamp(c, "proposer_name",  data["proposer_name"])
-    _stamp(c, "address",        data["address"])
-    _stamp(c, "phone",          data["phone"])
-    _stamp(c, "email",          data["email"])
-    _stamp(c, "proposal_date",  data["proposal_date"])
-    _stamp(c, "inception_date", data["inception_date"])
-    _stamp(c, "receipt_no",     data["receipt_no"])
-    _stamp(c, "receipt_date",   data["receipt_date"])
-    _stamp(c, "service_tax",    data["service_tax"])
-    _stamp(c, "prev_policy_no", data["prev_policy_no"])
-    _stamp(c, "scheme",         data["scheme"])
-    _stamp(c, "plan",           data["plan"])
-    _stamp(c, "limit",          data["limit"])
-    _stamp(c, "period",         data["period"])
-    _stamp(c, "insured_name",   data["insured_name"])
-    _stamp(c, "sex",            data["sex"])
-    _stamp(c, "dob",            data["dob"])
-    _stamp(c, "id_card",        data["id_card"])
-
-    _draw_barcode(c, data)
+    build_page1(c, data)
     c.showPage()
-
-    # -------- PAGE 2 --------
-    if PAGE2_IMG:
-        logging.info(f"Drawing page2 from {PAGE2_IMG}")
-        c.drawImage(ImageReader(PAGE2_IMG), 0, 0, width=PAGE_W, height=PAGE_H)
-    else:
-        logging.warning("PAGE2_IMG not found")
+    build_page2(c, data)
     c.showPage()
 
     c.save()
@@ -430,7 +542,7 @@ async def main():
     if not BOT_TOKEN:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан")
     logging.info("Starting bot...")
-    logging.info(f"Page1: {PAGE1_IMG}, Page2: {PAGE2_IMG}")
+    logging.info(f"Head1: {HEAD1_IMG}, Head2: {HEAD2_IMG}, Barcode: {BARCODE_IMG}, Doctor: {DOCTOR_IMG}")
     await dp.start_polling(bot)
 
 
