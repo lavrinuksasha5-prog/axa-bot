@@ -25,7 +25,6 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 
 def _find(name):
-    """Ищем любой файл, в имени которого есть 'page1' или 'page2'."""
     try:
         files = os.listdir(".")
     except Exception:
@@ -57,30 +56,38 @@ OPERATOR_NAMES = [
 
 PAGE_W, PAGE_H = A4   # 210 × 297 мм
 
+# =============================================================
+# РЕЖИМ КАЛИБРОВКИ:
+#   True  = рисовать красные рамки вместо значений (для настройки)
+#   False = рабочий режим — стирать и писать значения
+# =============================================================
+CALIBRATE = True
+
+
 # ============ КООРДИНАТЫ ПОЛЕЙ (мм от левого-верхнего угла A4) ============
 # (x, y_верх, ширина, высота)
 FIELDS = {
-    "policy_no":       (24.5, 53.0, 50, 5),
-    "proposer_code":   (46.0, 59.8, 50, 5),
-    "proposer_name":   (46.0, 66.2, 55, 5),
-    "address":         (23.8, 72.7, 55, 5),
-    "phone":           (26.0, 94.3, 50, 5),
-    "email":           (23.8, 100.8, 60, 5),
-    "proposal_date":   (31.8, 107.2, 50, 5),
-    "inception_date":  (50.5, 113.7, 40, 5),
-    "receipt_no":      (28.9, 126.6, 50, 5),
-    "receipt_date":    (28.9, 132.4, 50, 5),
-    "service_tax":     (28.1, 138.2, 50, 5),
-    "prev_policy_no":  (136.4, 53.0, 55, 5),
-    "scheme":          (53.4, 155.2, 96, 5),
-    "plan":            (50.5, 161.7, 96, 5),
-    "limit":           (56.3, 168.1, 96, 5),
-    "period":          (62.0, 146.5, 70, 5),
-    "insured_name":    (9.4,  183.5, 62, 5),
-    "sex":             (70.5, 183.5, 25, 5),
-    "dob":             (121.6, 183.5, 30, 5),
-    "id_card":         (171.7, 183.5, 25, 5),
-    "barcode_wipe":    (108.0, 112.0, 95, 29),
+    "policy_no":       (40.0, 62.0, 50, 6),
+    "proposer_code":   (47.0, 70.0, 50, 6),
+    "proposer_name":   (47.0, 77.5, 55, 6),
+    "address":         (25.0, 85.0, 55, 6),
+    "phone":           (24.0, 144.0, 55, 6),
+    "email":           (24.0, 151.5, 60, 6),
+    "proposal_date":   (36.0, 159.0, 50, 6),
+    "inception_date":  (63.0, 166.5, 40, 6),
+    "receipt_no":      (34.0, 180.0, 50, 6),
+    "receipt_date":    (34.0, 187.5, 50, 6),
+    "service_tax":     (32.0, 194.5, 50, 6),
+    "prev_policy_no":  (152.0, 62.0, 55, 6),
+    "scheme":          (57.0, 224.5, 96, 6),
+    "plan":            (54.0, 232.5, 96, 6),
+    "limit":           (60.0, 240.5, 96, 6),
+    "period":          (62.0, 202.5, 70, 6),
+    "insured_name":    (8.0,  259.5, 62, 6),
+    "sex":             (72.0, 259.5, 25, 6),
+    "dob":             (120.0, 259.5, 30, 6),
+    "id_card":         (172.0, 259.5, 25, 6),
+    "barcode_wipe":    (108.0, 118.0, 95, 32),
 }
 
 FONT_SIZE = 8.5
@@ -238,15 +245,35 @@ def _coords(key):
 
 def _stamp(c, key, value, size=FONT_SIZE, bold=False):
     x, y, w, h = _coords(key)
-    c.setFillColor(colors.white)
-    c.rect(x, y, w, h, fill=1, stroke=0)
-    c.setFillColor(colors.black)
-    c.setFont(FONT_BOLD if bold else FONT_NAME, size)
-    c.drawString(x + 0.4 * mm, y + h * 0.30, value)
+    if CALIBRATE:
+        # Режим настройки: рисуем красную рамку + имя поля
+        c.setStrokeColor(colors.red)
+        c.setLineWidth(0.7)
+        c.rect(x, y, w, h, stroke=1, fill=0)
+        c.setFillColor(colors.red)
+        c.setFont("Helvetica", 5)
+        c.drawString(x, y + h + 0.4 * mm, key)
+    else:
+        # Рабочий режим: стираем + пишем
+        c.setFillColor(colors.white)
+        c.rect(x, y, w, h, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        c.setFont(FONT_BOLD if bold else FONT_NAME, size)
+        c.drawString(x + 0.4 * mm, y + h * 0.30, value)
 
 
 def _draw_barcode(c, data):
     x, y, w, h = _coords("barcode_wipe")
+    if CALIBRATE:
+        c.setStrokeColor(colors.red)
+        c.setLineWidth(0.7)
+        c.rect(x, y, w, h, stroke=1, fill=0)
+        c.setFillColor(colors.red)
+        c.setFont("Helvetica", 5)
+        c.drawString(x, y + h + 0.4 * mm, "barcode_wipe")
+        return
+
+    # Рабочий режим: стираем + рисуем свой штрих-код
     c.setFillColor(colors.white)
     c.rect(x, y, w, h, fill=1, stroke=0)
 
